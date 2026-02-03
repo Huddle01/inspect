@@ -88,6 +88,7 @@ export interface ThreadContext {
   channelDescription?: string;
   threadTs?: string;
   previousMessages?: string[];
+  channelHistory?: string[];
 }
 
 /**

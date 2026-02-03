@@ -194,6 +194,47 @@ export async function getThreadMessages(
 }
 
 /**
+ * Get channel history (recent messages in the channel).
+ * Useful for gaining context about what's being discussed.
+ */
+export async function getChannelHistory(
+  token: string,
+  channelId: string,
+  limit = 20
+): Promise<{
+  ok: boolean;
+  messages?: Array<{
+    ts: string;
+    text: string;
+    user?: string;
+    bot_id?: string;
+    thread_ts?: string;
+  }>;
+  error?: string;
+}> {
+  const response = await fetch(
+    `https://slack.com/api/conversations.history?channel=${channelId}&limit=${limit}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  return response.json() as Promise<{
+    ok: boolean;
+    messages?: Array<{
+      ts: string;
+      text: string;
+      user?: string;
+      bot_id?: string;
+      thread_ts?: string;
+    }>;
+    error?: string;
+  }>;
+}
+
+/**
  * Publish a view to a user's App Home tab.
  */
 export async function publishView(

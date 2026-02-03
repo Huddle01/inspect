@@ -37,6 +37,12 @@ ${
     ? `**Previous Messages in Thread**:
 ${context.previousMessages.map((m) => `- ${m}`).join("\n")}`
     : ""
+}
+${
+  context.channelHistory?.length
+    ? `**Recent Channel History** (broader context):
+${context.channelHistory.map((m) => `- ${m}`).join("\n")}`
+    : ""
 }`;
   }
 

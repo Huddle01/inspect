@@ -13,6 +13,7 @@ import {
   updateMessage,
   getChannelInfo,
   getThreadMessages,
+  getChannelHistory,
   publishView,
 } from "./utils/slack-client";
 import { createClassifier } from "./classifier";
@@ -448,6 +449,19 @@ function formatChannelContext(channelName: string, channelDescription?: string):
 }
 
 /**
+ * Format channel history for inclusion in a prompt.
+ * Provides broader context about what's being discussed in the channel.
+ */
+function formatChannelHistory(channelHistory: string[]): string {
+  if (channelHistory.length === 0) {
+    return "";
+  }
+
+  const context = channelHistory.join("\n");
+  return `Recent channel conversation history (for context):\n---\n${context}\n---\n\n`;
+}
+
+/**
  * Create a session and send the initial prompt.
  * Shared logic between handleAppMention and handleRepoSelection.
  *
@@ -461,6 +475,7 @@ async function startSessionAndSendPrompt(
   messageText: string,
   userId: string,
   previousMessages?: string[],
+  channelHistory?: string[],
   channelName?: string,
   channelDescription?: string,
   traceId?: string
@@ -501,7 +516,8 @@ async function startSessionAndSendPrompt(
   // Build prompt content with channel and thread context if available
   const channelContext = channelName ? formatChannelContext(channelName, channelDescription) : "";
   const threadContext = previousMessages ? formatThreadContext(previousMessages) : "";
-  const promptContent = channelContext + threadContext + messageText;
+  const historyContext = channelHistory ? formatChannelHistory(channelHistory) : "";
+  const promptContent = channelContext + historyContext + threadContext + messageText;
 
   // Send the prompt to the session
   const promptResult = await sendPrompt(
@@ -782,6 +798,24 @@ async function handleAppMention(
     // Channel info not available
   }
 
+  // Get channel history for broader context about what's being discussed
+  // This helps understand the problem statement better
+  let channelHistory: string[] | undefined;
+  try {
+    const historyResult = await getChannelHistory(env.SLACK_BOT_TOKEN, channel, 20);
+    if (historyResult.ok && historyResult.messages) {
+      // Filter out thread replies and messages already in thread context
+      // Only keep top-level channel messages for broader context
+      channelHistory = historyResult.messages
+        .filter((m) => !m.thread_ts || m.ts === m.thread_ts) // Only top-level messages
+        .filter((m) => !thread_ts || m.ts !== ts) // Exclude current message
+        .map((m) => (m.bot_id ? `[Bot]: ${m.text}` : `[User]: ${m.text}`))
+        .slice(-10); // Keep last 10 messages
+    }
+  } catch {
+    // Channel history not available
+  }
+
   if (thread_ts) {
     const existingSession = await lookupThreadSession(env, channel, thread_ts);
     if (existingSession) {
@@ -795,8 +829,9 @@ async function handleAppMention(
       const channelContext = channelName
         ? formatChannelContext(channelName, channelDescription)
         : "";
+      const historyContext = channelHistory ? formatChannelHistory(channelHistory) : "";
       const threadContext = previousMessages ? formatThreadContext(previousMessages) : "";
-      const promptContent = channelContext + threadContext + messageText;
+      const promptContent = channelContext + historyContext + threadContext + messageText;
 
       const promptResult = await sendPrompt(
         env,
@@ -831,6 +866,7 @@ async function handleAppMention(
       channelDescription,
       threadTs: thread_ts,
       previousMessages,
+      channelHistory,
     },
     traceId
   );
@@ -858,6 +894,7 @@ async function handleAppMention(
         message: messageText,
         userId: event.user,
         previousMessages,
+        channelHistory,
         channelName,
         channelDescription,
       }),
@@ -1018,12 +1055,14 @@ async function handleRepoSelection(
     message: messageText,
     userId,
     previousMessages,
+    channelHistory,
     channelName,
     channelDescription,
   } = pendingData as {
     message: string;
     userId: string;
     previousMessages?: string[];
+    channelHistory?: string[];
     channelName?: string;
     channelDescription?: string;
   };
@@ -1058,6 +1097,7 @@ async function handleRepoSelection(
     messageText,
     userId,
     previousMessages,
+    channelHistory,
     channelName,
     channelDescription,
     traceId
